@@ -227,17 +227,38 @@ refresher.refresh_table("my_table", "path/to/metadata.json")
 
 ## Snowflake Components
 
-### Catalog Integration (Required)
+### Catalog Integration (Required) — a *local* OBJECT_STORE integration
 
-Snowflake requires a Catalog Integration for ALL Iceberg tables:
+Snowflake requires a Catalog Integration for **every** Iceberg table. With this method you
+create a **local** integration — `CATALOG_SOURCE = OBJECT_STORE` — which tells Snowflake that
+*it* owns the table's metadata pointer (the `METADATA_FILE_PATH` you supply), rather than a
+*remote* `ICEBERG_REST` integration that would delegate metadata to Databricks Unity Catalog.
+
+Create **one per external volume**, conventionally named `{external_volume}_catalog`:
 
 ```sql
--- This is created automatically by the external_volume module
 CREATE CATALOG INTEGRATION databricks_iceberg_volume_catalog
-  CATALOG_SOURCE = OBJECT_STORE
-  TABLE_FORMAT = ICEBERG
-  ENABLED = TRUE;
+  CATALOG_SOURCE = OBJECT_STORE   -- "local": Snowflake tracks metadata, you refresh it
+  TABLE_FORMAT   = ICEBERG
+  ENABLED        = TRUE;
 ```
+
+You don't normally write this by hand — the package creates it for you and is idempotent
+(it runs `SHOW CATALOG INTEGRATIONS` first and skips if the name already exists):
+
+```python
+from snowflake_databricks_iceberg import CatalogIntegration
+
+CatalogIntegration().create_object_store("databricks_iceberg_volume_catalog")
+```
+
+`TableRefresher` also ensures this integration exists before it creates or refreshes any
+table, so a fresh run bootstraps the local catalog automatically. Every Iceberg table then
+references it by name via `CATALOG = '<external_volume>_catalog'` (see below).
+
+> **Local vs. remote, in one line:** `OBJECT_STORE` = local catalog, manual `REFRESH`, you
+> control the path (this package). `ICEBERG_REST` = remote catalog, `AUTO_REFRESH`, Snowflake
+> calls Databricks directly — see [the path-limitation note](#the-azure-storage-path-limitation-why-this-method-exists) for why that's avoided here.
 
 ### External Volume
 
@@ -265,6 +286,49 @@ CREATE ICEBERG TABLE my_table
 
 -- Manual refresh when data changes
 ALTER ICEBERG TABLE my_table REFRESH 'path/to/new-metadata.json';
+```
+
+### Granting access (RBAC): Iceberg tables need their *own* grants
+
+This is the single most common Snowflake-side gotcha. **Snowflake treats Iceberg tables as a
+distinct object class from standard tables.** A bulk grant on `TABLES` does **not** cascade to
+Iceberg tables — so the usual pattern silently grants a role *nothing* on the tables created by
+this package:
+
+```sql
+-- ❌ WRONG — does NOT cover Iceberg tables. The role can connect but every SELECT fails.
+GRANT SELECT ON ALL    TABLES IN SCHEMA my_db.my_schema TO ROLE analyst;
+GRANT SELECT ON FUTURE TABLES IN SCHEMA my_db.my_schema TO ROLE analyst;
+```
+
+You must grant on the **`ICEBERG TABLES`** object class explicitly:
+
+```sql
+-- ✅ CORRECT — Iceberg tables are their own object class
+GRANT SELECT ON ALL    ICEBERG TABLES IN SCHEMA my_db.my_schema TO ROLE analyst;
+GRANT SELECT ON FUTURE ICEBERG TABLES IN SCHEMA my_db.my_schema TO ROLE analyst;
+```
+
+Notes:
+
+- `ALL` covers tables that exist **right now**; `FUTURE` covers tables created **later** (this
+  package creates a new Iceberg table the first time it sees one in Databricks, so you want
+  `FUTURE` too — otherwise newly-registered tables are unreadable until you re-grant).
+- The same split applies at database scope (`… IN DATABASE my_db …`) and to single tables
+  (`GRANT SELECT ON ICEBERG TABLE my_db.my_schema.my_table …`).
+- The role also needs `USAGE` up the hierarchy: `GRANT USAGE ON DATABASE …` and
+  `GRANT USAGE ON ALL/FUTURE SCHEMAS IN DATABASE …` before any table grant resolves.
+- This is **Snowflake-side** RBAC (who may query the registered tables). It is separate from
+  the **Databricks-side** grants the PyIceberg client needs to *read metadata*
+  (`USE CATALOG`, `USE SCHEMA`, `SELECT`, and `EXTERNAL USE SCHEMA` on the source schema).
+
+```sql
+-- Minimal working grant set for a read-only Snowflake role
+GRANT USAGE  ON DATABASE my_db                              TO ROLE analyst;
+GRANT USAGE  ON ALL    SCHEMAS IN DATABASE my_db            TO ROLE analyst;
+GRANT USAGE  ON FUTURE SCHEMAS IN DATABASE my_db            TO ROLE analyst;
+GRANT SELECT ON ALL    ICEBERG TABLES IN DATABASE my_db     TO ROLE analyst;
+GRANT SELECT ON FUTURE ICEBERG TABLES IN DATABASE my_db     TO ROLE analyst;
 ```
 
 ## Automating Refresh
