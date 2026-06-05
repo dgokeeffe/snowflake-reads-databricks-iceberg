@@ -2,6 +2,8 @@
 
 Enable Snowflake to read Apache Iceberg tables from Databricks Unity Catalog using PyIceberg for metadata discovery.
 
+![Network architecture — a PyIceberg client in your network discovers the latest metadata from Databricks Unity Catalog and re-points Snowflake, which reads data files directly from Azure storage via an External Volume](docs/architecture-network.png)
+
 ## Why This Approach?
 
 In enterprise environments, Snowflake often cannot directly reach Databricks Unity Catalog over private networks. This package solves that by:
