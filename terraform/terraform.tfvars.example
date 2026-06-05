@@ -1,0 +1,30 @@
+# Example Terraform variables
+# Copy to terraform.tfvars and fill in your values
+
+# Azure Resource Configuration
+resource_group_name    = "my-resource-group"
+storage_account_name   = "mystorageaccount"
+storage_container_name = "databricks"
+storage_base_path      = "root/"
+
+# Databricks Workspace
+databricks_workspace_url = "https://adb-1234567890123456.10.azuredatabricks.net"
+databricks_workspace_id  = "/subscriptions/xxx/resourceGroups/xxx/providers/Microsoft.Databricks/workspaces/xxx"
+
+# Project Configuration
+project_name = "my-iceberg-project"
+
+# Two-Phase Deploy Settings
+# First apply:  skip_snowflake_sp_lookup = true
+# After consent: skip_snowflake_sp_lookup = false
+skip_snowflake_sp_lookup = true
+
+# Set to true to create Entra ID SP for PyIceberg authentication
+# Set to false if you want to use existing SP or different auth method
+create_entra_id_sp = true
+
+# Optional tags
+tags = {
+  Environment = "dev"
+  Project     = "snowflake-iceberg"
+}
