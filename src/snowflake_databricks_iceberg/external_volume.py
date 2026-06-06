@@ -59,6 +59,7 @@ class ExternalVolume:
         container: Optional[str] = None,
         base_path: str = "root/",
         tenant_id: Optional[str] = None,
+        endpoint: str = "dfs",
     ):
         """
         Initialize external volume configuration.
@@ -69,7 +70,14 @@ class ExternalVolume:
             container: Azure container name (auto-detected from Terraform if None)
             base_path: Base path within container
             tenant_id: Azure tenant ID (auto-detected from Azure CLI if None)
+            endpoint: Azure storage endpoint, "dfs" (ADLS Gen2, default) or "blob".
+                Databricks Unity Catalog storage is HNS / ADLS Gen2, and Snowflake
+                requires a dfs.core.windows.net STORAGE_BASE_URL for Gen2 interop, so
+                "dfs" is the default. See the Snowflake external-volume Azure docs.
         """
+        if endpoint not in ("dfs", "blob"):
+            raise ValueError(f"endpoint must be 'dfs' or 'blob', got {endpoint!r}")
+        self.endpoint = endpoint
         self.volume_name = volume_name
         self.base_path = base_path.rstrip("/") + "/" if base_path else ""
 
@@ -94,9 +102,10 @@ class ExternalVolume:
                 "tenant_id required. Provide it or run 'az account show'."
             )
 
-        # Construct storage URL
+        # Construct storage URL. Snowflake requires the dfs endpoint for ADLS Gen2
+        # (HNS) interop, which is what Databricks Unity Catalog storage uses.
         self.storage_base_url = (
-            f"azure://{self.storage_account}.blob.core.windows.net/"
+            f"azure://{self.storage_account}.{self.endpoint}.core.windows.net/"
             f"{self.container}/{self.base_path}"
         )
 
@@ -499,6 +508,12 @@ def main():
         help="Azure tenant ID (auto-detected from Azure CLI)",
     )
     parser.add_argument(
+        "--endpoint",
+        choices=["dfs", "blob"],
+        default="dfs",
+        help="Azure storage endpoint: dfs (ADLS Gen2, default) or blob",
+    )
+    parser.add_argument(
         "--auto-consent",
         action="store_true",
         help="Auto-wait for consent without prompting",
@@ -517,6 +532,7 @@ def main():
         container=args.container,
         base_path=args.storage_base_path,
         tenant_id=args.tenant_id,
+        endpoint=args.endpoint,
     )
 
     print("=" * 60)

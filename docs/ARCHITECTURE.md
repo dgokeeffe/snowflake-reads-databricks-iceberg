@@ -146,7 +146,7 @@ This approach is designed for enterprise environments where Snowflake cannot dir
 │   │       (                                                                          │  │
 │   │         NAME = 'azure_storage'                                                   │  │
 │   │         STORAGE_PROVIDER = 'AZURE'                                               │  │
-│   │         STORAGE_BASE_URL = 'azure://account.blob.core.windows.net/              │  │
+│   │         STORAGE_BASE_URL = 'azure://account.dfs.core.windows.net/               │  │
 │   │                            container/root/'                                      │  │
 │   │         AZURE_TENANT_ID = '<tenant_id>'                                          │  │
 │   │       )                                                                          │  │
@@ -222,7 +222,7 @@ This approach is designed for enterprise environments where Snowflake cannot dir
    │   Full Path:     abfss://container@account.dfs.core.windows.net/root/        │
    │                  __unitystorage/.../metadata/00001-xxx.metadata.json         │
    │                                                                               │
-   │   External Volume Base: azure://account.blob.core.windows.net/container/root/│
+   │   External Volume Base: azure://account.dfs.core.windows.net/container/root/ │
    │                                                                               │
    │   Relative Path: __unitystorage/.../metadata/00001-xxx.metadata.json         │
    │                  ▲                                                            │

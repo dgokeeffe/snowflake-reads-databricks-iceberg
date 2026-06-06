@@ -91,12 +91,14 @@ Closing that gap is the entire job of this package:
 2. Convert the absolute `abfss://` URI into the relative `METADATA_FILE_PATH`.
 3. `ALTER ICEBERG TABLE … REFRESH '<relative-path>'` (or `CREATE` on first run).
 
-> **What about `CATALOG_SOURCE = ICEBERG_REST` + `AUTO_REFRESH`?** Snowflake's managed REST
-> integration *can* auto-refresh, but it requires Snowflake's own infrastructure to reach the
-> Databricks Iceberg REST catalog directly — which isn't always desirable or reachable in a
-> private-network Azure setup. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-iceberg_rest).
-> The `OBJECT_STORE` + relative-path method keeps path resolution entirely on the Snowflake
-> side, against an external volume you control.
+> **What about auto-refresh via the Iceberg REST catalog?** Snowflake can auto-sync with Unity
+> Catalog using a [**catalog-linked database**](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)
+> (`CATALOG_SOURCE = ICEBERG_REST`): it detects new tables and snapshots automatically and removes
+> the need for manual refresh entirely. **Prefer it when Snowflake can reach the Databricks Iceberg
+> REST endpoint directly.** Two things keep the `OBJECT_STORE` method here useful: (1) Snowflake↔Databricks
+> REST auth with an Entra service principal [is not supported over Azure Private Link](https://learn.microsoft.com/azure/databricks/external-access/iceberg)
+> (public networking only), and (2) the object-store method has Snowflake talk only to *your storage*,
+> never to Databricks. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-iceberg_rest).
 
 ## Quick Start
 
@@ -124,6 +126,69 @@ SNOWFLAKE_WAREHOUSE=COMPUTE_WH
 
 AZURE_TENANT_ID=your-tenant-id  # Optional, auto-detected from Azure CLI
 ```
+
+## Databricks-side prerequisites
+
+Before this package can read anything, the Databricks side must be set up. These are **one-time**
+steps for a workspace/metastore admin (and the catalog owner). They are easy to miss — skipping
+them is the most common cause of `load_table()` permission failures.
+
+### 1. Enable external Iceberg access on the metastore
+
+External engines can only reach Unity Catalog's Iceberg REST API if the metastore allows it.
+In the **account console → metastore settings**, enable **External data access**.
+([Docs](https://learn.microsoft.com/azure/databricks/external-access/iceberg#requirements).)
+
+### 2. Grant the principal `EXTERNAL USE SCHEMA`
+
+The principal the client authenticates as (PAT user, or the Entra / Databricks service principal)
+needs read access **plus** `EXTERNAL USE SCHEMA` on the schema — that privilege is what authorises
+Iceberg-REST metadata access for external engines:
+
+```sql
+GRANT USE CATALOG         ON CATALOG <catalog>          TO `<principal>`;
+GRANT USE SCHEMA          ON SCHEMA  <catalog>.<schema> TO `<principal>`;
+GRANT SELECT              ON SCHEMA  <catalog>.<schema> TO `<principal>`;
+GRANT EXTERNAL USE SCHEMA ON SCHEMA  <catalog>.<schema> TO `<principal>`;  -- required for external Iceberg reads
+```
+
+Only the catalog owner (or a metastore admin) can grant `EXTERNAL USE SCHEMA`.
+
+### 3. Make the tables readable as Iceberg
+
+The Iceberg REST catalog exposes these Databricks table types:
+
+| Databricks table | Readable as Iceberg? | How |
+|------------------|----------------------|-----|
+| Managed Iceberg (native) | ✅ | nothing extra |
+| Managed / External Delta | ✅ | enable **UniForm** |
+| Foreign Iceberg | ✅ | `REFRESH FOREIGN TABLE` to update |
+
+For **Delta** tables, enable UniForm so Databricks also writes Iceberg metadata on every commit:
+
+```sql
+ALTER TABLE <catalog>.<schema>.<table> SET TBLPROPERTIES (
+  'delta.enableIcebergCompatV2'          = 'true',
+  'delta.universalFormat.enabledFormats' = 'iceberg'
+);
+```
+
+([Docs: Read Delta tables with Iceberg clients](https://learn.microsoft.com/azure/databricks/delta/uniform).)
+
+### 4. Pick the right catalog
+
+> **Gotcha:** in the PyIceberg / catalog config, `warehouse` is the **Unity Catalog catalog name**
+> — *not* a Databricks SQL warehouse or compute. This package's `--catalog` argument sets it.
+
+```yaml
+catalog:
+  unity_catalog:
+    uri: https://<workspace-url>/api/2.1/unity-catalog/iceberg-rest
+    warehouse: <uc-catalog-name>   # ← the UC catalog, NOT a SQL warehouse
+    token: <pat-or-oauth-token>
+```
+
+One client instance addresses one catalog; configure separately for each catalog you need.
 
 ## Usage
 
@@ -262,13 +327,16 @@ references it by name via `CATALOG = '<external_volume>_catalog'` (see below).
 ### External Volume
 
 ```sql
--- Created by the external_volume module
+-- Created by the external_volume module.
+-- Use the dfs (ADLS Gen2) endpoint — Databricks UC storage is HNS/Gen2, and Snowflake
+-- requires a dfs.core.windows.net STORAGE_BASE_URL for Gen2 interop. (blob also works
+-- via --endpoint blob, but dfs is the default and the recommended endpoint here.)
 CREATE EXTERNAL VOLUME databricks_iceberg_volume
   STORAGE_LOCATIONS = (
     (
       NAME = 'azure_storage'
       STORAGE_PROVIDER = 'AZURE'
-      STORAGE_BASE_URL = 'azure://account.blob.core.windows.net/container/root/'
+      STORAGE_BASE_URL = 'azure://account.dfs.core.windows.net/container/root/'
       AZURE_TENANT_ID = 'your-tenant-id'
     )
   );
