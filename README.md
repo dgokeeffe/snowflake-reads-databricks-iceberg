@@ -94,11 +94,20 @@ Closing that gap is the entire job of this package:
 > **What about auto-refresh via the Iceberg REST catalog?** Snowflake can auto-sync with Unity
 > Catalog using a [**catalog-linked database**](https://docs.snowflake.com/en/user-guide/tables-iceberg-catalog-linked-database)
 > (`CATALOG_SOURCE = ICEBERG_REST`): it detects new tables and snapshots automatically and removes
-> the need for manual refresh entirely. **Prefer it when Snowflake can reach the Databricks Iceberg
-> REST endpoint directly.** Two things keep the `OBJECT_STORE` method here useful: (1) Snowflake↔Databricks
-> REST auth with an Entra service principal [is not supported over Azure Private Link](https://learn.microsoft.com/azure/databricks/external-access/iceberg)
-> (public networking only), and (2) the object-store method has Snowflake talk only to *your storage*,
-> never to Databricks. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-iceberg_rest).
+> the need for manual refresh entirely. **Prefer it when Snowflake can reach the Databricks workspace
+> over public networking.**
+>
+> The catch is the **network path**: that auto-sync requires *Snowflake itself* to call the Azure
+> Databricks REST endpoint, and **reaching Azure Databricks from Snowflake over Azure Private Link is
+> not a generally-available configuration** — it depends on a Snowflake-side private-connectivity
+> capability that isn't broadly enabled. So in a locked-down / Private Link environment the REST path
+> normally has to traverse **public** networking to Databricks, which is often a non-starter. (Even the
+> Entra-service-principal auth variant is [documented as public-networking only](https://learn.microsoft.com/azure/databricks/external-access/iceberg).)
+>
+> The `OBJECT_STORE` method here sidesteps that entirely: **Snowflake only ever connects to your Azure
+> storage, never to Databricks** — and storage Private Link is GA — while the in-network client reaches
+> Databricks privately. That makes manual refresh the pragmatic choice for Private Link / locked-down
+> deployments, not just a fallback. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-iceberg_rest).
 
 ## Quick Start
 
