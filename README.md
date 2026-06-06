@@ -40,37 +40,26 @@ This keeps all network traffic within your control:
 └─────────────────┘                              └─────────────────────┘
 ```
 
-## The Azure storage path limitation (why this method exists)
+## Why a path rewrite and manual refresh are needed
 
-Azure Data Lake Storage Gen2 exposes a **single** storage account through **two** DNS
-endpoints. They address the same bytes, but they are *not* interchangeable strings, and
-Databricks and Snowflake each speak only one of them:
+This package has Snowflake read Databricks's Iceberg tables through a Snowflake **External
+Volume** with an **`OBJECT_STORE`** catalog integration. Two properties of that method drive
+everything the package does.
 
-| Endpoint | API surface | Used by | URL scheme |
-|----------|-------------|---------|------------|
-| `<account>.dfs.core.windows.net` | ADLS Gen2 / ABFS (hierarchical namespace) | Databricks | `abfss://…` |
-| `<account>.blob.core.windows.net` | Blob REST API | Snowflake | `azure://…` |
+### 1. The path Databricks reports must be rewritten
 
-- **Databricks** records every Iceberg table's current metadata pointer as an absolute
-  **`dfs`** URL. The Unity Catalog Iceberg REST API returns, for example:
+Databricks records a table's current metadata pointer as an **absolute `abfss://` URI** — the
+ADLS Gen2 / ABFS form, with the container in the authority and the `dfs.core.windows.net` host.
+The Unity Catalog Iceberg REST API returns, for example:
 
-  ```
-  abfss://container@account.dfs.core.windows.net/root/__unitystorage/.../metadata/00007-uuid.metadata.json
-  ```
+```
+abfss://container@account.dfs.core.windows.net/root/__unitystorage/.../metadata/00007-uuid.metadata.json
+```
 
-- **Snowflake** external volumes on Azure are defined against the **Blob** endpoint via the
-  `azure://` scheme, and Snowflake does **not** accept `abfss://` or `dfs.core.windows.net`
-  in an external volume or in `METADATA_FILE_PATH`:
-
-  ```sql
-  STORAGE_BASE_URL = 'azure://account.blob.core.windows.net/container/root/'
-  ```
-
-So **you cannot hand Snowflake the path Databricks gives you.** The absolute `dfs` URL is
-meaningless to Snowflake's Iceberg reader, which only resolves files *relative to* its
-Blob-based external volume base. This package bridges the gap by converting the Databricks
-`abfss://…/root/<path>` URL into a path relative to the external volume's `STORAGE_BASE_URL`
-— stripping the scheme, account host, container, and the shared `root/` prefix:
+Snowflake addresses the same storage through its own **`azure://`** scheme (not `abfss://`),
+and `METADATA_FILE_PATH` is a path **relative to the external volume's `STORAGE_BASE_URL`** —
+not an absolute URI. So the package strips the scheme, container, account host, and the shared
+`root/` prefix to produce the relative path Snowflake expects:
 
 ```
 abfss://container@account.dfs.core.windows.net/root/__unitystorage/.../00007-uuid.metadata.json
@@ -81,7 +70,16 @@ abfss://container@account.dfs.core.windows.net/root/__unitystorage/.../00007-uui
 
 (See `TableRefresher.convert_abfss_to_snowflake_path()`.)
 
-### Why this also forces a *manual* refresh
+> **The endpoint is *not* the obstacle — the URI shape is.** Snowflake accepts *both* Azure
+> storage endpoints in `STORAGE_BASE_URL`, as long as you use the `azure://` prefix:
+> `azure://<account>.blob.core.windows.net/<container>/` **or**
+> `azure://<account>.dfs.core.windows.net/<container>/`
+> ([Snowflake docs](https://docs.snowflake.com/en/user-guide/tables-iceberg-configure-external-volume-azure)).
+> Point the external volume at the **same `dfs` endpoint Databricks uses** and the byte paths
+> line up exactly — but you still convert the *absolute* `abfss://` URI into a *relative*
+> `METADATA_FILE_PATH`, and (see below) you still refresh manually.
+
+### 2. `OBJECT_STORE` pins a literal path and never auto-refreshes
 
 Because the value Snowflake stores is a **literal, relative metadata-file path** — not a live
 catalog reference — Snowflake has no way to discover that Databricks has written a newer
@@ -90,16 +88,15 @@ a new `NNNNN-uuid.metadata.json`; until you re-point Snowflake at it, queries re
 Closing that gap is the entire job of this package:
 
 1. Ask Databricks (via PyIceberg) for the **current** `metadata_location`.
-2. Convert the `dfs` URL to a Blob-relative path.
+2. Convert the absolute `abfss://` URI into the relative `METADATA_FILE_PATH`.
 3. `ALTER ICEBERG TABLE … REFRESH '<relative-path>'` (or `CREATE` on first run).
 
 > **What about `CATALOG_SOURCE = ICEBERG_REST` + `AUTO_REFRESH`?** Snowflake's managed REST
 > integration *can* auto-refresh, but it requires Snowflake's own infrastructure to reach the
-> Databricks REST API and to reconcile the `dfs`-style locations that catalog vends — neither
-> of which is dependable in a private-network Azure setup. See
-> [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-iceberg_rest). The `OBJECT_STORE` +
-> relative-path method sidesteps both by keeping path resolution entirely on the Snowflake
-> side, against a Blob external volume you control.
+> Databricks Iceberg REST catalog directly — which isn't always desirable or reachable in a
+> private-network Azure setup. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#why-not-iceberg_rest).
+> The `OBJECT_STORE` + relative-path method keeps path resolution entirely on the Snowflake
+> side, against an external volume you control.
 
 ## Quick Start
 
@@ -260,7 +257,7 @@ references it by name via `CATALOG = '<external_volume>_catalog'` (see below).
 
 > **Local vs. remote, in one line:** `OBJECT_STORE` = local catalog, manual `REFRESH`, you
 > control the path (this package). `ICEBERG_REST` = remote catalog, `AUTO_REFRESH`, Snowflake
-> calls Databricks directly — see [the path-limitation note](#the-azure-storage-path-limitation-why-this-method-exists) for why that's avoided here.
+> calls Databricks directly — see [why a path rewrite and manual refresh are needed](#why-a-path-rewrite-and-manual-refresh-are-needed) for why that's avoided here.
 
 ### External Volume
 
