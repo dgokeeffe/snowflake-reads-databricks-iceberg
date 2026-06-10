@@ -60,3 +60,8 @@ terraform/.terraform.lock.hcl
 # OS
 .DS_Store
 Thumbs.db
+
+# Demo app
+app/frontend/node_modules/
+app/backend/static/
+app/.env

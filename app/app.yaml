@@ -1,0 +1,26 @@
+# Databricks Apps runtime config for the refresh demo.
+#
+# Snowflake credentials come from a secret scope (create once):
+#   databricks secrets create-scope iceberg-demo
+#   databricks secrets put-secret iceberg-demo snowflake-password
+command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+env:
+  - name: DEMO_CATALOG
+    value: "main"
+  - name: DEMO_SCHEMA
+    value: "iceberg_demo"
+  - name: DEMO_TABLE
+    value: "demo_events"
+  - name: DEMO_SNOWFLAKE_DB
+    value: "ICEBERG_DEMO"
+  - name: SNOWFLAKE_EXTERNAL_VOLUME
+    value: "databricks_uniform_volume"
+  - name: SNOWFLAKE_ACCOUNT
+    value: "ZQZAFWW-FC76123"
+  - name: SNOWFLAKE_USER
+    value: "DGOKE1"
+  - name: SNOWFLAKE_WAREHOUSE
+    value: "COMPUTE_WH"
+  - name: SNOWFLAKE_PASSWORD
+    valueFrom: snowflake-password
