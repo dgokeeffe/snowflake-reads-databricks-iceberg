@@ -31,6 +31,11 @@ from snowflake_databricks_iceberg import TableRefresher
 
 load_dotenv()
 
+# Databricks Apps injects DATABRICKS_HOST without a scheme; PyIceberg needs a full URL
+_host = os.getenv("DATABRICKS_HOST", "")
+if _host and not _host.startswith(("https://", "http://")):
+    os.environ["DATABRICKS_HOST"] = f"https://{_host}"
+
 DEMO_CATALOG = os.getenv("DEMO_CATALOG", "main")
 DEMO_SCHEMA = os.getenv("DEMO_SCHEMA", "iceberg_demo")
 DEMO_TABLE = os.getenv("DEMO_TABLE", "demo_events")
