@@ -63,5 +63,4 @@ Thumbs.db
 
 # Demo app
 app/frontend/node_modules/
-app/backend/static/
 app/.env
