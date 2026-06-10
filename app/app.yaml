@@ -38,4 +38,4 @@ env:
   - name: METRIC_VIEW
     value: "davidokeeffe_standard_demo_catalog.default.snowflake_sales_metrics"
   - name: GENIE_SPACE_ID
-    value: ""  # filled in once the Genie space exists
+    value: "01f165190ba2153b9ad873e9d1056e0b"
