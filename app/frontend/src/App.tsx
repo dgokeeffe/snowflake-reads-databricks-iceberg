@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import RbacPanel from "./RbacPanel";
+import FederationPanel from "./FederationPanel";
+import BenchmarkPanel from "./BenchmarkPanel";
+import MetricsPanel from "./MetricsPanel";
+import GeniePanel from "./GeniePanel";
 
 type EngineCount = { count: number | null; seconds?: number; error?: string };
 type Counts = { table: string; databricks?: EngineCount; snowflake?: EngineCount };
@@ -46,7 +50,9 @@ function EngineCard(props: { name: string; accent: string; data?: EngineCount; s
 }
 
 export default function App() {
-  const [tab, setTab] = useState<"refresh" | "rbac">("refresh");
+  const [tab, setTab] = useState<
+    "refresh" | "federation" | "rbac" | "benchmarks" | "metrics" | "genie"
+  >("refresh");
   const [counts, setCounts] = useState<Counts | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
@@ -100,11 +106,15 @@ export default function App() {
         <h1 className="text-3xl font-bold text-slate-900">
           Snowflake reads Databricks Iceberg
         </h1>
-        <div className="mt-4 flex gap-1 rounded-xl bg-slate-200 p-1 w-fit">
+        <div className="mt-4 flex flex-wrap gap-1 rounded-xl bg-slate-200 p-1 w-fit">
           {(
             [
-              ["refresh", "Iceberg refresh (Snowflake reads Databricks)"],
-              ["rbac", "RBAC federation (Databricks reads Snowflake)"],
+              ["refresh", "1 · Iceberg refresh"],
+              ["federation", "2 · Federation setup"],
+              ["rbac", "3 · RBAC personas"],
+              ["benchmarks", "4 · Benchmarks"],
+              ["metrics", "5 · Metric view"],
+              ["genie", "6 · Genie"],
             ] as const
           ).map(([key, label]) => (
             <button
@@ -120,9 +130,33 @@ export default function App() {
           ))}
         </div>
 
+        {tab === "federation" && (
+          <div className="mt-6">
+            <FederationPanel />
+          </div>
+        )}
+
         {tab === "rbac" && (
           <div className="mt-6">
             <RbacPanel />
+          </div>
+        )}
+
+        {tab === "benchmarks" && (
+          <div className="mt-6">
+            <BenchmarkPanel />
+          </div>
+        )}
+
+        {tab === "metrics" && (
+          <div className="mt-6">
+            <MetricsPanel />
+          </div>
+        )}
+
+        {tab === "genie" && (
+          <div className="mt-6">
+            <GeniePanel />
           </div>
         )}
 

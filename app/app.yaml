@@ -7,7 +7,9 @@ command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
 
 env:
   - name: DEMO_CATALOG
-    value: "main"
+    value: "davidokeeffe_standard_demo_catalog"
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "46347bdf6515604a"
   - name: DEMO_SCHEMA
     value: "iceberg_demo"
   - name: DEMO_TABLE
@@ -30,3 +32,10 @@ env:
     value: "rbac_demo_global"
   - name: RBAC_CATALOG_AU
     value: "rbac_demo_au"
+  # Federation overview + metric view + Genie sections
+  - name: FEDERATION_CONNECTION
+    value: "davidokeeffe_snowflake_conn_m2m"
+  - name: METRIC_VIEW
+    value: "davidokeeffe_standard_demo_catalog.default.snowflake_sales_metrics"
+  - name: GENIE_SPACE_ID
+    value: ""  # filled in once the Genie space exists

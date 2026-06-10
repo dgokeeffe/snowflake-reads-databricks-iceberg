@@ -2,4 +2,4 @@ fastapi>=0.110.0
 uvicorn>=0.29.0
 # Pulls in databricks-sdk, snowflake-connector-python, pyiceberg and the
 # TableRefresher / IcebergCatalogClient helpers this app is built on.
-snowflake-databricks-iceberg @ git+https://github.com/dgokeeffe/snowflake-reads-databricks-iceberg.git
+snowflake-databricks-iceberg @ git+https://github.com/dgokeeffe/snowflake-reads-databricks-iceberg.git@feature/refresh-demo-app
