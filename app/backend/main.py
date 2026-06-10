@@ -34,6 +34,25 @@ SNOWFLAKE_SCHEMA = os.getenv("DEMO_SNOWFLAKE_SCHEMA", "PUBLIC")
 EXTERNAL_VOLUME = os.getenv("SNOWFLAKE_EXTERNAL_VOLUME", "databricks_uniform_volume")
 WAREHOUSE_ID = os.getenv("DATABRICKS_WAREHOUSE_ID")
 
+# RBAC add-on: two foreign catalogs over the same Snowflake table, each backed
+# by a connection pinned to a different Snowflake role (see
+# scripts/setup/setup_snowflake_rbac_demo.py in the benchmark project)
+RBAC_PERSONAS = {
+    "global": {
+        "catalog": os.getenv("RBAC_CATALOG_GLOBAL", "rbac_demo_global"),
+        "role": "ANALYST_GLOBAL",
+        "blurb": "all rows, PII clear",
+    },
+    "au": {
+        "catalog": os.getenv("RBAC_CATALOG_AU", "rbac_demo_au"),
+        "role": "ANALYST_AU",
+        "blurb": "AU rows only, PII masked by Snowflake",
+    },
+}
+RBAC_SCHEMA = os.getenv("RBAC_SCHEMA", "sales")
+RBAC_TABLE = os.getenv("RBAC_TABLE", "customer_orders")
+RBAC_POLICIES = ["region_policy", "email_mask", "card_mask"]
+
 app = FastAPI(title="Snowflake reads Databricks Iceberg - refresh demo")
 
 _w: WorkspaceClient | None = None
@@ -146,6 +165,55 @@ def counts():
         refresher.close()
 
     return result
+
+
+@app.get("/api/rbac/compare")
+def rbac_compare():
+    """Run the identical query through both persona catalogs."""
+    out = {}
+    for key, p in RBAC_PERSONAS.items():
+        stmt = (
+            "SELECT region, customer_name, customer_email, credit_card, amount "
+            f"FROM {p['catalog']}.{RBAC_SCHEMA}.{RBAC_TABLE} ORDER BY 1, 2"
+        )
+        start = time.time()
+        try:
+            rows = run_dbsql(stmt)
+            out[key] = {
+                "catalog": p["catalog"],
+                "role": p["role"],
+                "blurb": p["blurb"],
+                "rows": rows,
+                "seconds": round(time.time() - start, 2),
+            }
+        except HTTPException as exc:
+            out[key] = {"catalog": p["catalog"], "role": p["role"], "error": str(exc.detail)}
+    return out
+
+
+@app.get("/api/rbac/policies")
+def rbac_policies():
+    """Pull the live policy DDL from Snowflake - proof governance lives there."""
+    import snowflake.connector
+
+    conn = snowflake.connector.connect(
+        account=os.environ["SNOWFLAKE_ACCOUNT"],
+        user=os.environ["SNOWFLAKE_USER"],
+        password=os.environ["SNOWFLAKE_PASSWORD"],
+        warehouse=os.getenv("SNOWFLAKE_WAREHOUSE", "COMPUTE_WH"),
+    )
+    cursor = conn.cursor()
+    try:
+        ddl = {}
+        for policy in RBAC_POLICIES:
+            cursor.execute(f"SELECT GET_DDL('POLICY', 'RBAC_DEMO.SALES.{policy}')")
+            ddl[policy] = cursor.fetchone()[0]
+        return ddl
+    except Exception as exc:
+        raise HTTPException(502, f"Snowflake policy lookup failed: {exc}")
+    finally:
+        cursor.close()
+        conn.close()
 
 
 static_dir = Path(__file__).parent / "static"

@@ -1,6 +1,9 @@
 # Refresh demo app
 
-A one-page Databricks App that makes the manual-refresh pattern visible:
+A one-page Databricks App with two tabs:
+
+**Tab 1 — Iceberg refresh** (Snowflake reads Databricks) makes the
+manual-refresh pattern visible:
 
 1. **Write 1,000 rows** into a Unity Catalog managed Iceberg table (Databricks).
 2. The Snowflake count card shows it is **behind** — Snowflake still points at the
@@ -8,6 +11,15 @@ A one-page Databricks App that makes the manual-refresh pattern visible:
 3. **Refresh Snowflake** — PyIceberg discovers the latest metadata path via the UC
    Iceberg REST API and runs `ALTER ICEBERG TABLE … REFRESH '<path>'`.
 4. Both counts match. One copy of data, two engines.
+
+**Tab 2 — RBAC federation** (Databricks reads Snowflake) runs the identical
+query through two foreign catalogs whose connections are pinned to different
+Snowflake roles, showing Snowflake's row access policy (AU rows only) and
+masking policies (email/card) enforced server-side through Lakehouse
+Federation. It can also display the live policy DDL straight from Snowflake.
+Prereq: the `rbac_demo_*` connections/catalogs exist (created by
+`setup_snowflake_rbac_demo.py` in the companion benchmark project), or point
+`RBAC_CATALOG_GLOBAL` / `RBAC_CATALOG_AU` at your own.
 
 ## Local dev
 

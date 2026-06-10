@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import RbacPanel from "./RbacPanel";
 
 type EngineCount = { count: number | null; seconds?: number; error?: string };
 type Counts = { table: string; databricks?: EngineCount; snowflake?: EngineCount };
@@ -45,6 +46,7 @@ function EngineCard(props: { name: string; accent: string; data?: EngineCount; s
 }
 
 export default function App() {
+  const [tab, setTab] = useState<"refresh" | "rbac">("refresh");
   const [counts, setCounts] = useState<Counts | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
@@ -98,7 +100,35 @@ export default function App() {
         <h1 className="text-3xl font-bold text-slate-900">
           Snowflake reads Databricks Iceberg
         </h1>
-        <p className="mt-2 text-slate-600">
+        <div className="mt-4 flex gap-1 rounded-xl bg-slate-200 p-1 w-fit">
+          {(
+            [
+              ["refresh", "Iceberg refresh (Snowflake reads Databricks)"],
+              ["rbac", "RBAC federation (Databricks reads Snowflake)"],
+            ] as const
+          ).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={
+                "rounded-lg px-4 py-2 text-sm font-medium " +
+                (tab === key ? "bg-white text-slate-900 shadow" : "text-slate-600")
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "rbac" && (
+          <div className="mt-6">
+            <RbacPanel />
+          </div>
+        )}
+
+        {tab === "refresh" && (
+          <>
+        <p className="mt-6 text-slate-600">
           One copy of data on Azure storage. Write in Databricks, then re-point Snowflake at the
           new <code className="rounded bg-slate-200 px-1">metadata.json</code> — and watch it
           catch up.
@@ -165,6 +195,8 @@ export default function App() {
             ))}
           </ul>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

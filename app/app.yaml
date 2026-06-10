@@ -24,3 +24,9 @@ env:
     value: "COMPUTE_WH"
   - name: SNOWFLAKE_PASSWORD
     valueFrom: snowflake-password
+  # RBAC federation tab: foreign catalogs created by
+  # setup_snowflake_rbac_demo.py (one Snowflake role per connection)
+  - name: RBAC_CATALOG_GLOBAL
+    value: "rbac_demo_global"
+  - name: RBAC_CATALOG_AU
+    value: "rbac_demo_au"
