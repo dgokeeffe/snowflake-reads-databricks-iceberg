@@ -64,3 +64,4 @@ Thumbs.db
 # Demo app
 app/frontend/node_modules/
 app/.env
+app/.databricks/
