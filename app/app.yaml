@@ -1,0 +1,41 @@
+# Databricks Apps runtime config for the refresh demo.
+#
+# Snowflake credentials come from a secret scope (create once):
+#   databricks secrets create-scope iceberg-demo
+#   databricks secrets put-secret iceberg-demo snowflake-password
+command: ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8000"]
+
+env:
+  - name: DEMO_CATALOG
+    value: "davidokeeffe_standard_demo_catalog"
+  - name: DATABRICKS_WAREHOUSE_ID
+    value: "46347bdf6515604a"
+  - name: DEMO_SCHEMA
+    value: "iceberg_demo"
+  - name: DEMO_TABLE
+    value: "demo_events"
+  - name: DEMO_SNOWFLAKE_DB
+    value: "ICEBERG_DEMO"
+  - name: SNOWFLAKE_EXTERNAL_VOLUME
+    value: "databricks_uniform_volume"
+  - name: SNOWFLAKE_ACCOUNT
+    value: "ZQZAFWW-FC76123"
+  - name: SNOWFLAKE_USER
+    value: "DGOKE1"
+  - name: SNOWFLAKE_WAREHOUSE
+    value: "COMPUTE_WH"
+  - name: SNOWFLAKE_PASSWORD
+    valueFrom: snowflake-password
+  # RBAC federation tab: foreign catalogs created by
+  # setup_snowflake_rbac_demo.py (one Snowflake role per connection)
+  - name: RBAC_CATALOG_GLOBAL
+    value: "rbac_demo_global"
+  - name: RBAC_CATALOG_AU
+    value: "rbac_demo_au"
+  # Federation overview + metric view + Genie sections
+  - name: FEDERATION_CONNECTION
+    value: "davidokeeffe_snowflake_conn_m2m"
+  - name: METRIC_VIEW
+    value: "davidokeeffe_standard_demo_catalog.default.snowflake_sales_metrics"
+  - name: GENIE_SPACE_ID
+    value: "01f165190ba2153b9ad873e9d1056e0b"

@@ -72,6 +72,9 @@ class IcebergCatalogClient:
             catalog_name: Unity Catalog name to connect to
             token: Databricks PAT or OAuth token. If None, will attempt other auth methods.
         """
+        # Databricks Apps injects DATABRICKS_HOST without a scheme
+        if not workspace_host.startswith(("https://", "http://")):
+            workspace_host = f"https://{workspace_host}"
         self.workspace_host = workspace_host.rstrip("/")
         self.catalog_name = catalog_name
         self._token = token
