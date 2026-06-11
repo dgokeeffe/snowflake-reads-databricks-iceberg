@@ -4,10 +4,12 @@ Endpoints, by demo section:
   POST /api/write               - insert rows into a UC managed Iceberg table (Databricks)
   POST /api/refresh             - PyIceberg metadata discovery + ALTER ICEBERG TABLE REFRESH (Snowflake)
   GET  /api/counts              - row counts from both engines, side by side
+  GET  /api/rows                - latest rows from both engines (the diff is the lag)
   GET  /api/federation/overview - live UC connection + foreign catalog introspection
   GET  /api/rbac/compare        - same query through two role-pinned foreign catalogs
   GET  /api/rbac/policies       - live Snowflake policy DDL via GET_DDL
-  GET  /api/metrics/summary     - MEASURE() queries over the federated metric view
+  GET  /api/metrics/summary     - MEASURE() queries over the federated metric view (uncached)
+  GET  /api/metrics/info        - metric view YAML, source, and Catalog Explorer links
   GET  /api/genie/info          - link-out to the Genie space on the metric view
 
 The Snowflake count lags after a write until /api/refresh re-points the
@@ -106,8 +108,8 @@ FEDERATION_CATALOGS = [
 ]
 
 # Metric view over query federation: every MEASURE() query is a live federated
-# query (federation never hits the DBSQL result cache), so results are cached
-# app-side — the cached/live contrast is part of the demo.
+# query (federation never hits the DBSQL result cache). Deliberately NOT cached
+# app-side — showing real federated latency on every click is part of the demo.
 METRIC_VIEW = os.getenv(
     "METRIC_VIEW", "davidokeeffe_standard_demo_catalog.default.snowflake_sales_metrics"
 )
@@ -191,9 +193,11 @@ def write_rows(req: WriteRequest):
         f"CREATE TABLE IF NOT EXISTS {FQ_TABLE} "
         "(event_id BIGINT, event_ts TIMESTAMP, payload STRING) USING ICEBERG"
     )
+    # event_id continues from the current max so the Snowflake-side diff is visible
     run_dbsql(
         f"INSERT INTO {FQ_TABLE} "
-        f"SELECT id, current_timestamp(), uuid() FROM range({rows})"
+        f"SELECT id + (SELECT COALESCE(MAX(event_id), -1) + 1 FROM {FQ_TABLE}), "
+        f"current_timestamp(), uuid() FROM range({rows})"
     )
     return {"inserted": rows, "table": FQ_TABLE, "seconds": round(time.time() - start, 2)}
 
@@ -246,6 +250,38 @@ def counts():
         refresher.close()
 
     return result
+
+
+@app.get("/api/rows")
+def latest_rows(limit: int = 8):
+    """Latest rows from both engines, newest first — the diff IS the refresh lag."""
+    limit = max(1, min(limit, 50))
+    out = {"columns": ["event_id", "event_ts", "payload"]}
+
+    try:
+        rows = run_dbsql(
+            f"SELECT event_id, event_ts, payload FROM {FQ_TABLE} "
+            f"ORDER BY event_id DESC LIMIT {limit}"
+        )
+        out["databricks"] = {"rows": rows, "max_id": int(rows[0][0]) if rows else None}
+    except HTTPException as exc:
+        out["databricks"] = {"rows": [], "max_id": None, "error": str(exc.detail)}
+
+    refresher = make_refresher()
+    try:
+        cursor = refresher.snowflake_conn.cursor()
+        cursor.execute(
+            f'SELECT event_id, event_ts, payload FROM {SNOWFLAKE_DB}.{SNOWFLAKE_SCHEMA}."{DEMO_TABLE.upper()}" '
+            f"ORDER BY event_id DESC LIMIT {limit}"
+        )
+        rows = [[str(c) for c in row] for row in cursor.fetchall()]
+        out["snowflake"] = {"rows": rows, "max_id": int(rows[0][0]) if rows else None}
+    except Exception as exc:  # table absent until first refresh
+        out["snowflake"] = {"rows": [], "max_id": None, "error": str(exc).splitlines()[0]}
+    finally:
+        refresher.close()
+
+    return out
 
 
 @app.get("/api/rbac/compare")
@@ -336,27 +372,52 @@ def federation_overview(force: bool = False):
     return _federation_cache
 
 
-_metric_cache: dict | None = None
-
-
 @app.get("/api/metrics/summary")
-def metrics_summary(force: bool = False):
-    """Run the canned MEASURE() queries — live federated on first hit, app-cached after."""
-    global _metric_cache
-    if _metric_cache is not None and not force:
-        return {**_metric_cache, "cached": True}
-
+def metrics_summary():
+    """Run the canned MEASURE() queries. Deliberately uncached — every call is a live
+    federated query against Snowflake, so the audience sees real performance."""
     start = time.time()
     results = {}
     for key, q in METRIC_QUERIES.items():
-        results[key] = {"title": q["title"], "columns": q["columns"], "rows": run_dbsql(q["sql"])}
-    _metric_cache = {
+        q_start = time.time()
+        rows = run_dbsql(q["sql"])
+        results[key] = {
+            "title": q["title"],
+            "columns": q["columns"],
+            "rows": rows,
+            "seconds": round(time.time() - q_start, 2),
+        }
+    return {
         "view": METRIC_VIEW,
         "queried_at": time.strftime("%H:%M:%S"),
         "seconds": round(time.time() - start, 2),
         "results": results,
     }
-    return {**_metric_cache, "cached": False}
+
+
+@app.get("/api/metrics/info")
+def metrics_info():
+    """What the metric view IS: its YAML definition, federated source, and link-outs."""
+    host = workspace().config.host.rstrip("/")
+    catalog, schema, view = METRIC_VIEW.split(".")
+    info = {"view": METRIC_VIEW, "yaml": None, "source": None}
+    try:
+        t = workspace().tables.get(METRIC_VIEW)
+        info["yaml"] = t.view_definition
+        info["source"] = (t.properties or {}).get("metric_view.from.name")
+    except Exception as exc:
+        info["error"] = str(exc).splitlines()[0]
+
+    links = {
+        "explorer": f"{host}/explore/data/{catalog}/{schema}/{view}",
+        "lineage": f"{host}/explore/data/{catalog}/{schema}/{view}?activeTab=lineage",
+    }
+    if info["source"]:
+        links["source_explorer"] = f"{host}/explore/data/{info['source'].replace('.', '/')}"
+    if GENIE_SPACE_ID:
+        links["genie"] = f"{host}/genie/rooms/{GENIE_SPACE_ID}"
+    info["links"] = links
+    return info
 
 
 @app.get("/api/genie/info")

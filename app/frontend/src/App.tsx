@@ -4,6 +4,8 @@ import FederationPanel from "./FederationPanel";
 import BenchmarkPanel from "./BenchmarkPanel";
 import MetricsPanel from "./MetricsPanel";
 import GeniePanel from "./GeniePanel";
+import RowsCompare from "./RowsCompare";
+import heroBanner from "./assets/hero-banner.png";
 
 type EngineCount = { count: number | null; seconds?: number; error?: string };
 type Counts = { table: string; databricks?: EngineCount; snowflake?: EngineCount };
@@ -56,6 +58,7 @@ export default function App() {
   const [counts, setCounts] = useState<Counts | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [log, setLog] = useState<LogLine[]>([]);
+  const [dataVersion, setDataVersion] = useState(0);
 
   const addLog = (text: string, kind: LogLine["kind"] = "info") =>
     setLog((l) => [{ ts: new Date().toLocaleTimeString(), text, kind }, ...l].slice(0, 30));
@@ -63,6 +66,7 @@ export default function App() {
   const loadCounts = useCallback(async () => {
     const data: Counts = await (await fetch("/api/counts")).json();
     setCounts(data);
+    setDataVersion((v) => v + 1);
     return data;
   }, []);
 
@@ -206,6 +210,19 @@ export default function App() {
           {counts?.table ?? ""} · Snowflake reads the same parquet files directly from ADLS via an
           External Volume — no Snowflake→Databricks connection
         </p>
+
+        <RowsCompare version={dataVersion} />
+
+        <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Recommended flow — one copy of data, no engine-to-engine connection
+          </h3>
+          <img
+            src={heroBanner}
+            alt="Architecture: Databricks writes UC managed Iceberg to ADLS; Snowflake reads the same files via an External Volume + catalog integration"
+            className="mt-3 w-full rounded-lg"
+          />
+        </div>
 
         <div className="mt-8 rounded-2xl border border-slate-200 bg-white p-4">
           <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
