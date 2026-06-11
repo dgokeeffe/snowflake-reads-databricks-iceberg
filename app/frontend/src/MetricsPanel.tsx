@@ -61,8 +61,10 @@ export default function MetricsPanel() {
         A Unity Catalog <strong>metric view</strong> whose source is the federated Snowflake{" "}
         <code className="rounded bg-slate-200 px-1">store_sales</code> table — governed measures
         like <code className="rounded bg-slate-200 px-1">total_sales</code> defined once in YAML,
-        queried with <code className="rounded bg-slate-200 px-1">MEASURE()</code>. Nothing here is
-        cached — every click is a live federated query, so the latency you see is real.
+        queried with <code className="rounded bg-slate-200 px-1">MEASURE()</code>. No app-side
+        caching — the timings are real. The view declares 6-hourly materializations (relaxed
+        mode), so fast answers were served from a materialized aggregate in Databricks; slow ones
+        went over the wire to Snowflake.
       </p>
 
       {info && (
@@ -174,8 +176,9 @@ export default function MetricsPanel() {
 
       {data && (
         <p className="mt-3 text-center text-xs text-slate-400">
-          Federated queries never hit the DBSQL result cache — run it again and it goes back over
-          the wire to Snowflake.
+          Federated queries never hit the DBSQL result cache; with relaxed materialization the
+          optimizer may serve from the scheduled materialized views instead — the timing tells you
+          which path you got.
         </p>
       )}
     </div>
