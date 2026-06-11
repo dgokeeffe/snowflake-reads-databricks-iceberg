@@ -1,0 +1,21 @@
+{
+  "name": "iceberg-refresh-demo",
+  "description": "Snowflake ↔ Databricks interop demo: Iceberg refresh, federation, RBAC, benchmarks, metric view, Genie",
+  "resources": [
+    {
+      "name": "snowflake-password",
+      "secret": {
+        "scope": "iceberg-demo",
+        "key": "snowflake-password",
+        "permission": "READ"
+      }
+    },
+    {
+      "name": "sql-warehouse",
+      "sql_warehouse": {
+        "id": "REPLACE_WITH_WAREHOUSE_ID",
+        "permission": "CAN_USE"
+      }
+    }
+  ]
+}
