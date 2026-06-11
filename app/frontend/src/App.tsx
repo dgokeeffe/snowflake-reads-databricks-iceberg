@@ -5,7 +5,7 @@ import BenchmarkPanel from "./BenchmarkPanel";
 import MetricsPanel from "./MetricsPanel";
 import GeniePanel from "./GeniePanel";
 import RowsCompare from "./RowsCompare";
-import heroBanner from "./assets/hero-banner.png";
+import architectureDiagram from "./assets/architecture-network.png";
 
 type EngineCount = { count: number | null; seconds?: number; error?: string };
 type Counts = { table: string; databricks?: EngineCount; snowflake?: EngineCount };
@@ -218,8 +218,8 @@ export default function App() {
             Recommended flow — one copy of data, no engine-to-engine connection
           </h3>
           <img
-            src={heroBanner}
-            alt="Architecture: Databricks writes UC managed Iceberg to ADLS; Snowflake reads the same files via an External Volume + catalog integration"
+            src={architectureDiagram}
+            alt="Network architecture: Python Iceberg client discovers metadata via the UC Iceberg REST API, then ALTER ICEBERG TABLE REFRESH re-points Snowflake's External Volume at the new metadata.json on ADLS — no Snowflake-to-Databricks connection"
             className="mt-3 w-full rounded-lg"
           />
         </div>
